@@ -1,0 +1,331 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mi Panel de Estadísticas</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f1f5f9;
+  color: #1e293b;
+}
+header {
+  background: #172554;
+  color: white;
+  padding: 24px;
+  text-align: center;
+}
+.container {
+  max-width: 1100px;
+  margin: 25px auto;
+  padding: 15px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
+  gap: 15px;
+}
+.card {
+  background: white;
+  padding: 22px;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px #0001;
+}
+.card h3 { color: #64748b; margin-top: 0; }
+.amount { font-size: 26px; font-weight: bold; }
+.green { color: #16a34a; }
+.red { color: #dc2626; }
+form, .panel {
+  background: white;
+  padding: 22px;
+  border-radius: 12px;
+  margin-top: 20px;
+  box-shadow: 0 3px 12px #0001;
+}
+input, select, button {
+  padding: 12px;
+  margin: 6px 0;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  font-size: 15px;
+}
+input, select { width: 100%; }
+button {
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  border: none;
+}
+button:hover { background: #1d4ed8; }
+.export { background: #15803d; }
+.delete { background: #dc2626; padding: 7px 10px; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+th, td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+canvas { max-height: 320px; }
+@media(max-width:600px) {
+  .table-wrap { overflow-x: auto; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>📊 Mi Panel de Estadísticas</h1>
+  <p>Control de ingresos, gastos y beneficios</p>
+</header>
+
+<div class="container">
+
+  <div class="cards">
+    <div class="card">
+      <h3>Ingresos</h3>
+      <div class="amount green" id="income">0 €</div>
+    </div>
+
+    <div class="card">
+      <h3>Gastos</h3>
+      <div class="amount red" id="expenses">0 €</div>
+    </div>
+
+    <div class="card">
+      <h3>Balance</h3>
+      <div class="amount" id="balance">0 €</div>
+    </div>
+
+    <div class="card">
+      <h3>Movimientos</h3>
+      <div class="amount" id="count">0</div>
+    </div>
+  </div>
+
+  <form id="dataForm">
+    <h2>➕ Añadir movimiento</h2>
+
+    <input id="description" type="text"
+      placeholder="Descripción" required>
+
+    <input id="amount" type="number"
+      placeholder="Cantidad (€)" min="0.01"
+      step="0.01" required>
+
+    <select id="type">
+      <option value="income">Ingreso</option>
+      <option value="expense">Gasto</option>
+    </select>
+
+    <input id="date" type="date" required>
+
+    <button type="submit">Guardar movimiento</button>
+  </form>
+
+  <div class="panel">
+    <h2>📈 Gráfico de ingresos y gastos</h2>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>📋 Historial de movimientos</h2>
+    <button class="export" onclick="exportCSV()">
+      Descargar CSV
+    </button>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Tipo</th>
+            <th>Importe</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="history"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let movements = JSON.parse(
+  localStorage.getItem("movements") || "[]"
+);
+
+const euro = n => n.toLocaleString("es-ES", {
+  style: "currency",
+  currency: "EUR"
+});
+
+document.getElementById("date").value =
+  new Date().toISOString().slice(0,10);
+
+const chart = new Chart(
+  document.getElementById("chart"), {
+    type: "bar",
+    data: {
+      labels: ["Ingresos", "Gastos"],
+      datasets: [{
+        label: "Importe (€)",
+        data: [0, 0],
+        backgroundColor: ["#16a34a", "#dc2626"]
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true }
+      }
+    }
+  }
+);
+
+document.getElementById("dataForm")
+.addEventListener("submit", function(e) {
+  e.preventDefault();
+
+  const description =
+    document.getElementById("description").value.trim();
+
+  const amount = Number(
+    document.getElementById("amount").value
+  );
+
+  const type = document.getElementById("type").value;
+  const date = document.getElementById("date").value;
+
+  if (!description || !Number.isFinite(amount) ||
+      amount <= 0 || !date) {
+    alert("Introduce datos válidos.");
+    return;
+  }
+
+  movements.push({
+    id: crypto.randomUUID(),
+    description,
+    amount,
+    type,
+    date
+  });
+
+  save();
+  this.reset();
+  document.getElementById("date").value =
+    new Date().toISOString().slice(0,10);
+});
+
+function save() {
+  localStorage.setItem(
+    "movements",
+    JSON.stringify(movements)
+  );
+  render();
+}
+
+function removeMovement(id) {
+  if (confirm("¿Eliminar este movimiento?")) {
+    movements = movements.filter(m => m.id !== id);
+    save();
+  }
+}
+
+function render() {
+  const income = movements
+    .filter(m => m.type === "income")
+    .reduce((s,m) => s + m.amount, 0);
+
+  const expenses = movements
+    .filter(m => m.type === "expense")
+    .reduce((s,m) => s + m.amount, 0);
+
+  document.getElementById("income").textContent = euro(income);
+  document.getElementById("expenses").textContent = euro(expenses);
+  document.getElementById("balance").textContent = euro(income-expenses);
+  document.getElementById("count").textContent = movements.length;
+
+  const balance = document.getElementById("balance");
+  balance.className = "amount " +
+    (income-expenses >= 0 ? "green" : "red");
+
+  const history = document.getElementById("history");
+  history.innerHTML = "";
+
+  [...movements]
+    .sort((a,b) => b.date.localeCompare(a.date))
+    .forEach(m => {
+      const tr = document.createElement("tr");
+
+      [
+        m.date,
+        m.description,
+        m.type === "income" ? "Ingreso" : "Gasto",
+        euro(m.amount)
+      ].forEach(value => {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.appendChild(td);
+      });
+
+      const td = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.textContent = "Eliminar";
+      btn.className = "delete";
+      btn.addEventListener("click", () =>
+        removeMovement(m.id)
+      );
+      td.appendChild(btn);
+      tr.appendChild(td);
+      history.appendChild(tr);
+    });
+
+  chart.data.datasets[0].data = [income, expenses];
+  chart.update();
+}
+
+function exportCSV() {
+  const rows = [
+    ["Fecha","Descripción","Tipo","Importe"],
+    ...movements.map(m => [
+      m.date,
+      m.description,
+      m.type === "income" ? "Ingreso" : "Gasto",
+      m.amount
+    ])
+  ];
+
+  const csv = "\uFEFF" + rows.map(row =>
+    row.map(v => '"' + String(v).replace(/"/g,'""') + '"')
+      .join(";")
+  ).join("\n");
+
+  const blob = new Blob([csv], {
+    type: "text/csv;charset=utf-8;"
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "estadisticas.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+render();
+</script>
+
+</body>
+</html>
